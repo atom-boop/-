@@ -75,6 +75,27 @@ canvas {
   font-weight: bold;
 }
 
+.hero-choice {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.hero-choice button {
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border: 4px solid transparent;
+  border-radius: 50%;
+}
+
+.hero-choice button.selected {
+  border-color: white;
+  box-shadow: 0 0 14px white;
+}
+
 footer {
   padding: 20px;
   color: #888;
@@ -92,6 +113,13 @@ footer {
 <div class="menu" id="menu">
 <h2>Добро пожаловать!</h2>
 <p>Сражайся на арене!</p>
+<h3>Выбери героя</h3>
+<div class="hero-choice">
+  <button class="selected" style="background:#222" onclick="selectHero('#222',this)" aria-label="Чёрный герой"></button>
+  <button style="background:#d21f1f" onclick="selectHero('#d21f1f',this)" aria-label="Красный герой"></button>
+  <button style="background:#ff8c00" onclick="selectHero('#ff8c00',this)" aria-label="Оранжевый герой"></button>
+  <button style="background:#777" onclick="selectHero('#777',this)" aria-label="Серый герой"></button>
+</div>
 <button onclick="startGame()">ИГРАТЬ</button>
 </div>
 
@@ -102,8 +130,8 @@ footer {
 <canvas id="game" width="900" height="400"></canvas>
 
 <div class="controls">
-<button id="left">◀</button>
-<button id="right">▶</button>
+<button id="left">A ◀</button>
+<button id="right">D ▶</button>
 <button id="attack">⚔ АТАКА</button>
 <button id="block">🛡 БЛОК</button>
 <button id="jump">⬆ ПРЫЖОК</button>
@@ -120,7 +148,7 @@ STICK BATTLE © 2026
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let player = {x:150,y:0,vy:0,hp:100};
+let player = {x:150,y:0,vy:0,hp:100,color:"#222"};
 let enemy = {x:650,y:0,vy:0,hp:100,maxHp:100};
 let keys = {};
 let attackCooldown = 0;
@@ -136,6 +164,12 @@ let message = "";
 
 const levelInfo = document.getElementById("levelInfo");
 const messageBox = document.getElementById("message");
+
+function selectHero(color,button) {
+  player.color=color;
+  document.querySelectorAll(".hero-choice button").forEach(item=>item.classList.remove("selected"));
+  button.classList.add("selected");
+}
 
 function startGame() {
   document.getElementById("menu").style.display="none";
@@ -161,7 +195,7 @@ function setupLevel() {
   enemy.x=650;
   enemy.y=0;
   enemy.vy=0;
-  enemy.maxHp=70+level*30;
+  enemy.maxHp=55+level*15;
   enemy.hp=enemy.maxHp;
   attackCooldown=0;
   enemyCooldown=50;
@@ -216,10 +250,10 @@ function draw() {
   ctx.fillStyle="#8a7045";
   ctx.fillRect(0,350,900,50);
 
-  stick(player.x,player.y,"#222",playerAttacking,direction);
+  stick(player.x,player.y,player.color,playerAttacking,direction);
 
   if(enemy.hp>0)
-    stick(enemy.x,enemy.y,"#a22",enemyAttacking,-1);
+    stick(enemy.x,enemy.y,"#8a2be2",enemyAttacking,-1);
 
   health(50,30,player.hp);
   health(730,30,enemy.hp,enemy.maxHp);
@@ -288,11 +322,11 @@ function loop() {
       const distance=enemy.x-player.x;
 
       if(Math.abs(distance)>75) {
-        enemy.x+=distance>0?-2-level*.15:2+level*.15;
+        enemy.x+=distance>0?-1-level*.08:1+level*.08;
       } else if(enemyCooldown<=0) {
         enemyAttacking=true;
-        enemyCooldown=Math.max(28,75-level*7);
-        let damage=8+level*3;
+        enemyCooldown=Math.max(55,100-level*7);
+        let damage=5+level;
         if(blocking && distance*direction>0) damage=Math.ceil(damage*.25);
         else if(blocking) damage=Math.ceil(damage*.5);
         player.hp=Math.max(0,player.hp-damage);
@@ -368,14 +402,16 @@ document.getElementById("jump")
 });
 
 document.addEventListener("keydown",e=>{
-  if(e.key==="a" || e.key==="ArrowLeft") keys.left=true;
-  if(e.key==="d" || e.key==="ArrowRight") keys.right=true;
-  if(e.key===" " && !e.repeat) jump();
+  const key=e.key.toLowerCase();
+  if(key==="a") keys.left=true;
+  if(key==="d") keys.right=true;
+  if(key===" " && !e.repeat) jump();
 });
 
 document.addEventListener("keyup",e=>{
-  if(e.key==="a" || e.key==="ArrowLeft") keys.left=false;
-  if(e.key==="d" || e.key==="ArrowRight") keys.right=false;
+  const key=e.key.toLowerCase();
+  if(key==="a") keys.left=false;
+  if(key==="d") keys.right=false;
 });
 
 canvas.addEventListener("contextmenu",e=>e.preventDefault());
