@@ -161,6 +161,7 @@ let direction = 1;
 let level = 1;
 let transition = 0;
 let message = "";
+let loopRunning = false;
 
 const levelInfo = document.getElementById("levelInfo");
 const messageBox = document.getElementById("message");
@@ -178,7 +179,10 @@ function startGame() {
   level=1;
   setupLevel();
   active=true;
-  loop();
+  if(!loopRunning) {
+    loopRunning=true;
+    loop();
+  }
 }
 
 function backMenu() {
@@ -304,15 +308,18 @@ function updatePhysics(character) {
 }
 
 function loop() {
-  if(!active) return;
+  if(!active) {
+    loopRunning=false;
+    return;
+  }
 
   if(!transition) {
     if(keys.left && player.x>30) {
-      player.x-=3;
+      player.x-=5;
       direction=-1;
     }
     if(keys.right && player.x<870) {
-      player.x+=3;
+      player.x+=5;
       direction=1;
     }
     updatePhysics(player);
@@ -402,16 +409,35 @@ document.getElementById("jump")
 });
 
 document.addEventListener("keydown",e=>{
-  const key=e.key.toLowerCase();
-  if(key==="a") keys.left=true;
-  if(key==="d") keys.right=true;
-  if(key===" " && !e.repeat) jump();
+  if(e.code==="KeyA") {
+    e.preventDefault();
+    keys.left=true;
+  }
+  if(e.code==="KeyD") {
+    e.preventDefault();
+    keys.right=true;
+  }
+  if(e.code==="Space" && !e.repeat) {
+    e.preventDefault();
+    jump();
+  }
 });
 
 document.addEventListener("keyup",e=>{
-  const key=e.key.toLowerCase();
-  if(key==="a") keys.left=false;
-  if(key==="d") keys.right=false;
+  if(e.code==="KeyA") {
+    e.preventDefault();
+    keys.left=false;
+  }
+  if(e.code==="KeyD") {
+    e.preventDefault();
+    keys.right=false;
+  }
+});
+
+window.addEventListener("blur",()=>{
+  keys.left=false;
+  keys.right=false;
+  blocking=false;
 });
 
 canvas.addEventListener("contextmenu",e=>e.preventDefault());
