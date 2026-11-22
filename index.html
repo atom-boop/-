@@ -96,6 +96,27 @@ canvas {
   box-shadow: 0 0 14px white;
 }
 
+.hero-choice button.hero-name {
+  width: auto;
+  height: auto;
+  min-width: 130px;
+  border-radius: 8px;
+  padding: 10px;
+  color: white;
+  font-size: 15px;
+}
+
+#abilityBar {
+  min-height: 48px;
+  margin: 8px 0;
+}
+
+#abilityBar button {
+  padding: 8px 12px;
+  font-size: 14px;
+  background: #444;
+}
+
 footer {
   padding: 20px;
   color: #888;
@@ -115,10 +136,10 @@ footer {
 <p>Сражайся на арене!</p>
 <h3>Выбери героя</h3>
 <div class="hero-choice">
-  <button class="selected" style="background:#222" onclick="selectHero('#222',this)" aria-label="Чёрный герой"></button>
-  <button style="background:#d21f1f" onclick="selectHero('#d21f1f',this)" aria-label="Красный герой"></button>
-  <button style="background:#ff8c00" onclick="selectHero('#ff8c00',this)" aria-label="Оранжевый герой"></button>
-  <button style="background:#777" onclick="selectHero('#777',this)" aria-label="Серый герой"></button>
+  <button class="selected hero-name" style="background:#222" onclick="selectHero('#222','chosen',this)">Чёрный<br>Избранный</button>
+  <button class="hero-name" style="background:#8b0000" onclick="selectHero('#8b0000','darklord',this)">Красный<br>Дарк Лорд</button>
+  <button class="hero-name" style="background:#ff8c00" onclick="selectHero('#ff8c00','second',this)">Оранжевый<br>Секонд</button>
+  <button class="hero-name" style="background:#777" onclick="selectHero('#777','victim',this)">Серый<br>Виктим</button>
 </div>
 <button onclick="startGame()">ИГРАТЬ</button>
 </div>
@@ -136,6 +157,7 @@ footer {
 <button id="block">🛡 БЛОК</button>
 <button id="jump">⬆ ПРЫЖОК</button>
 </div>
+<div id="abilityBar"></div>
 
 <button onclick="backMenu()">В МЕНЮ</button>
 </div>
@@ -148,7 +170,7 @@ STICK BATTLE © 2026
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let player = {x:150,y:0,vy:0,hp:100,color:"#222"};
+let player = {x:150,y:0,vy:0,hp:100,color:"#222",hero:"chosen"};
 let enemy = {x:650,y:0,vy:0,hp:100,maxHp:100};
 let keys = {};
 let attackCooldown = 0;
@@ -162,14 +184,48 @@ let level = 1;
 let transition = 0;
 let message = "";
 let loopRunning = false;
+let projectiles=[];
+let clones=[];
+let cooldowns={};
+let speedTimer=0;
+let hacked=false;
 
 const levelInfo = document.getElementById("levelInfo");
 const messageBox = document.getElementById("message");
 
-function selectHero(color,button) {
+function selectHero(color,hero,button) {
   player.color=color;
+  player.hero=hero;
   document.querySelectorAll(".hero-choice button").forEach(item=>item.classList.remove("selected"));
   button.classList.add("selected");
+  renderAbilities();
+}
+
+function renderAbilities() {
+  const bar=document.getElementById("abilityBar");
+  const abilities={
+    chosen:[
+      ["Q","Красный лазер","eyeLaser"],
+      ["E","Огонь","fire"],
+      ["R","Электричество","lightning"],
+      ["T","Лёд","ice"]
+    ],
+    darklord:[["Q","Огненный шар","fireball"]],
+    second:[
+      ["Q","Бросок валуна","boulder"],
+      ["E","Зелёный лазер","greenLaser"]
+    ],
+    victim:[
+      ["Q","Молот","hammer"],
+      ["E","Меч","sword"],
+      ["R","Клоны","clones"],
+      ["T","Скорость","speed"],
+      ["F","Взлом врага","hack"]
+    ]
+  };
+  bar.innerHTML=(abilities[player.hero]||[])
+    .map(item=>`<button onclick="castAbility('${item[2]}')">${item[0]} — ${item[1]}</button>`)
+    .join("");
 }
 
 function startGame() {
@@ -208,6 +264,11 @@ function setupLevel() {
   blocking=false;
   transition=0;
   message="";
+  projectiles=[];
+  clones=[];
+  cooldowns={};
+  speedTimer=0;
+  hacked=false;
   levelInfo.textContent=`УРОВЕНЬ ${level} / 5`;
   messageBox.textContent="";
 }
@@ -259,6 +320,32 @@ function draw() {
   if(enemy.hp>0)
     stick(enemy.x,enemy.y,"#8a2be2",enemyAttacking,-1);
 
+  for(const clone of clones) {
+    ctx.globalAlpha=.55;
+    stick(clone.x,clone.y,"#777",false,direction);
+    ctx.globalAlpha=1;
+  }
+
+  for(const shot of projectiles) {
+    ctx.fillStyle=shot.color;
+    ctx.strokeStyle=shot.color;
+    if(shot.type==="hammer") {
+      ctx.fillRect(shot.x-12,shot.y-12,24,24);
+    } else if(shot.type==="lightning") {
+      ctx.lineWidth=5;
+      ctx.beginPath();
+      ctx.moveTo(shot.x-20,shot.y-15);
+      ctx.lineTo(shot.x,shot.y);
+      ctx.lineTo(shot.x-10,shot.y+15);
+      ctx.lineTo(shot.x+20,shot.y+35);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(shot.x,shot.y,shot.radius,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+
   health(50,30,player.hp);
   health(730,30,enemy.hp,enemy.maxHp);
 
@@ -296,6 +383,57 @@ function jump() {
   player.vy=12;
 }
 
+function canCast(name,delay) {
+  if(!active || enemy.hp<=0) return false;
+  if((cooldowns[name]||0)>0) return false;
+  cooldowns[name]=delay;
+  return true;
+}
+
+function addProjectile(type,color,vx,damage,radius=8,yOffset=0) {
+  projectiles.push({
+    type,x:player.x+direction*(type==="boulder"?35:45),
+    y:230-player.y-yOffset,vx:vx*direction,vy:type==="boulder"?-6:0,
+    radius,color,damage,life:180
+  });
+}
+
+function castAbility(name) {
+  if(player.hero==="second") {
+    if(name==="boulder" && canCast(name,150)) addProjectile("boulder","#777",7,25,22,35);
+    if(name==="greenLaser" && canCast(name,55)) addProjectile("laser","#55ff55",14,14,7);
+  }
+  if(player.hero==="darklord") {
+    if(name==="fireball" && canCast(name,80)) addProjectile("fireball","#ff3b00",10,22,12);
+  }
+  if(player.hero==="chosen") {
+    if(name==="eyeLaser" && canCast(name,50)) addProjectile("laser","#ff2020",16,16,6);
+    if(name==="fire" && canCast(name,90)) {
+      addProjectile("fire","#ff4d00",11,12,10,0);
+      addProjectile("fire","#ff8c00",9,12,14,-25);
+    }
+    if(name==="lightning" && canCast(name,110)) {
+      addProjectile("lightning","#35aaff",13,28,5);
+    }
+    if(name==="ice" && canCast(name,120)) addProjectile("ice","#86e7ff",10,18,10);
+  }
+  if(player.hero==="victim") {
+    if(name==="hammer" && canCast(name,100)) addProjectile("hammer","#bbb",9,30,18);
+    if(name==="sword" && canCast(name,65)) {
+      if(Math.abs(player.x-enemy.x)<145) enemy.hp=Math.max(0,enemy.hp-30);
+    }
+    if(name==="clones" && canCast(name,180)) {
+      clones.push({x:player.x-40,y:0,timer:300});
+      clones.push({x:player.x-80,y:0,timer:300});
+    }
+    if(name==="speed" && canCast(name,180)) speedTimer=300;
+    if(name==="hack" && canCast(name,300)) {
+      hacked=true;
+      enemy.hp=0;
+    }
+  }
+}
+
 function updatePhysics(character) {
   if(character.y>0 || character.vy>0) {
     character.y+=character.vy;
@@ -315,15 +453,49 @@ function loop() {
 
   if(!transition) {
     if(keys.left && player.x>30) {
-      player.x-=5;
+      player.x-=speedTimer>0?9:5;
       direction=-1;
     }
     if(keys.right && player.x<870) {
-      player.x+=5;
+      player.x+=speedTimer>0?9:5;
       direction=1;
     }
     updatePhysics(player);
     updatePhysics(enemy);
+
+    for(const name in cooldowns) {
+      if(cooldowns[name]>0) cooldowns[name]--;
+    }
+    if(speedTimer>0) speedTimer--;
+
+    for(let i=projectiles.length-1;i>=0;i--) {
+      const shot=projectiles[i];
+      shot.x+=shot.vx;
+      if(shot.type==="boulder") {
+        shot.vy+=0.35;
+        shot.y+=shot.vy;
+        if(shot.y>280) {
+          shot.y=280;
+          shot.vy=-Math.abs(shot.vy)*.45;
+        }
+      }
+      if(enemy.hp>0 && Math.abs(shot.x-enemy.x)<shot.radius+35 &&
+         Math.abs(shot.y-(230-enemy.y))<shot.radius+55) {
+        enemy.hp=Math.max(0,enemy.hp-shot.damage);
+        projectiles.splice(i,1);
+        continue;
+      }
+      shot.life--;
+      if(shot.life<=0 || shot.x<0 || shot.x>900) projectiles.splice(i,1);
+    }
+
+    for(let i=clones.length-1;i>=0;i--) {
+      const clone=clones[i];
+      clone.timer--;
+      if(Math.abs(clone.x-enemy.x)<100) enemy.hp=Math.max(0,enemy.hp-4);
+      clone.x+=enemy.x>clone.x?2:-2;
+      if(clone.timer<=0) clones.splice(i,1);
+    }
 
     if(enemy.hp>0) {
       const distance=enemy.x-player.x;
@@ -421,6 +593,26 @@ document.addEventListener("keydown",e=>{
     e.preventDefault();
     jump();
   }
+  const abilityKeys={
+    KeyQ:["boulder","fireball","eyeLaser","hammer"],
+    KeyE:["greenLaser","fire","sword"],
+    KeyR:["lightning","clones"],
+    KeyT:["ice","speed"],
+    KeyF:["hack"]
+  };
+  if(abilityKeys[e.code]) {
+    e.preventDefault();
+    const names=abilityKeys[e.code];
+    const heroNames={
+      second:["boulder","greenLaser"],
+      darklord:["fireball"],
+      chosen:["eyeLaser","fire","lightning","ice"],
+      victim:["hammer","sword","clones","speed","hack"]
+    };
+    const allowed=heroNames[player.hero]||[];
+    const name=names.find(item=>allowed.includes(item));
+    if(name) castAbility(name);
+  }
 });
 
 document.addEventListener("keyup",e=>{
@@ -449,6 +641,7 @@ canvas.addEventListener("mouseup",e=>{
   if(e.button===2) blocking=false;
 });
 canvas.addEventListener("mouseleave",()=>blocking=false);
+renderAbilities();
 </script>
 
 </body>
